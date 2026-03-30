@@ -43,49 +43,48 @@ public class MiningEngine
     private void UpdateSimulation()
     {
         double totalMinedUsd = 0;
-        double totalConsumption = 0;
-        double totalHeat = 0;
+        double totalConsumptionWh = 0;
+        double totalHeatGen = 0;
+        double totalCoolingPower = CurrentLocation.CoolingCapacity;
 
-        foreach (var hardware in CurrentLocation.Rigs)
+        foreach (var hardware in CurrentLocation.Rigs.ToList())
         {
             if (hardware is MiningHardware mhw)
             {
-                totalMinedUsd += CalculateHardwareMining(mhw);
-                totalConsumption += mhw.Consumption;
-                totalHeat += mhw.HeatOutput;
-                mhw.Condition = Math.Max(0, mhw.Condition - 0.001);
+                ProcessHardware(mhw, ref totalMinedUsd, ref totalConsumptionWh, ref totalHeatGen);
             }
             else if (hardware is RigHardware rhw)
             {
-                totalConsumption += rhw.Consumption;
-                totalHeat += rhw.HeatOutput;
-                foreach (var card in rhw.Cards)
-                {
-                    totalMinedUsd += CalculateHardwareMining(card);
-                    totalConsumption += card.Consumption;
-                    totalHeat += card.HeatOutput;
-                    card.Condition = Math.Max(0, card.Condition - 0.001);
-                }
+                totalConsumptionWh += rhw.Consumption;
+                totalHeatGen += rhw.HeatOutput;
+                foreach (var card in rhw.Cards) ProcessHardware(card, ref totalMinedUsd, ref totalConsumptionWh, ref totalHeatGen);
+            }
+            else if (hardware is CoolingUnit cu)
+            {
+                totalCoolingPower += cu.CoolingPower;
+                totalConsumptionWh += cu.Consumption;
             }
         }
 
-        double electricityCost = (totalConsumption / 1000.0) * (CurrentLocation.ElectricityPrice / 3600.0);
-        WalletBalance += (totalMinedUsd - electricityCost);
+        double thermalMass = CurrentLocation.Size * 1.5;
+        double heatDelta = (totalHeatGen - totalCoolingPower) / thermalMass;
+        CurrentTemperature = Math.Clamp(CurrentTemperature + heatDelta - (CurrentTemperature - 20) * 0.05, 20, 120);
 
-        double heatEffect = (totalHeat - CurrentLocation.CoolingCapacity) * 0.01;
-        CurrentTemperature = Math.Max(20.0, CurrentTemperature + heatEffect);
-        if (CurrentTemperature > 22) CurrentTemperature -= 0.05;
+        WalletBalance -= (totalConsumptionWh / 1000.0) * (CurrentLocation.ElectricityPrice / 3600.0);
+        WalletBalance += totalMinedUsd;
 
         foreach (var coin in NetworkDifficulties.Keys.ToList())
-        {
-            NetworkDifficulties[coin] += (Prices[coin] * 0.00001);
-        }
+            NetworkDifficulties[coin] *= (1 + (Prices[coin] * 0.0000001));
     }
 
-    private double CalculateHardwareMining(MiningHardware hw)
+    private void ProcessHardware(MiningHardware hw, ref double minedUsd, ref double consumption, ref double heat)
     {
-        double difficulty = NetworkDifficulties[hw.SelectedCoin];
-        double minedAmount = (hw.Hashrate * (hw.Condition / 100.0)) / difficulty;
-        return minedAmount * Prices[hw.SelectedCoin];
+        double throttle = CurrentTemperature > 80 ? Math.Max(0.1, 1.0 - (CurrentTemperature - 80) / 40.0) : 1.0;
+        double ocMult = hw.IsOverclocked ? 1.4 : 1.0;
+        
+        minedUsd += (hw.Hashrate * ocMult * throttle * (hw.Condition / 100.0)) / (NetworkDifficulties[hw.SelectedCoin] * 3600) * Prices[hw.SelectedCoin];
+        consumption += hw.Consumption * (hw.IsOverclocked ? 1.5 : 1.0);
+        heat += hw.HeatOutput * (hw.IsOverclocked ? 2.0 : 1.0) * throttle;
+        hw.Condition -= (CurrentTemperature > 95 ? 0.05 : 0.001);
     }
 }

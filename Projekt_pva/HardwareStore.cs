@@ -14,8 +14,23 @@ public static class HardwareStore
         };
     }
 
+    public static CoolingUnit CreateCooling(string modelName)
+    {
+        return modelName switch
+        {
+            "Basic Fan" => new CoolingUnit("Basic Fan", 2.0, 50.0, 1, 200),
+            "Industrial AC" => new CoolingUnit("Industrial AC", 20.0, 1200.0, 3, 5000),
+            _ => throw new ArgumentException("Cooling model not found!")
+        };
+    }
+
     public static List<string> GetAvailableModels() 
     {
         return new List<string> { "RTX 4090", "RTX 3080", "GTX 1080 Ti", "Antminer S19" };
+    }
+
+    public static List<string> GetAvailableCooling()
+    {
+        return new List<string> { "Basic Fan", "Industrial AC" };
     }
 }

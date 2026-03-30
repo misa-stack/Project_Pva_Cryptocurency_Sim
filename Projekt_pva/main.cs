@@ -1,10 +1,13 @@
 ﻿using Spectre.Console;
+using System.Text.Json;
 using Projekt_pva;
 
 namespace Projekt_pva;
 
 public class Program
 {
+    private static List<double> btcHistory = new();
+
     public static void Main(string[] args)
     {
         var market = new MarketEngine();
@@ -17,18 +20,32 @@ public class Program
         while (true)
         {
             Console.Clear();
-            AnsiConsole.Write(new FigletText("Crypto Miner").Color(Color.Green));
+            AnsiConsole.Write(new FigletText("CRYPTO TYCOON").Color(Color.Gold1));
 
-            var stats = new Table().AddColumn("Status").AddColumn("Value");
-            stats.AddRow("Location", mining.CurrentLocation.Name);
+            btcHistory.Add(market.Prices[CryptoCurrency.BTC]);
+            if (btcHistory.Count > 30) btcHistory.RemoveAt(0);
+
+            var grid = new Grid().AddColumn().AddColumn();
+
+            var stats = new Table().Border(TableBorder.Rounded).Title("[b]SIMULATION[/]");
+            stats.AddColumn("Metric").AddColumn("Value");
+            stats.AddRow("Market", $"[bold]{market.GetMarketTrend()}[/]");
             stats.AddRow("Balance", $"[yellow]{mining.WalletBalance:N2} $[/]");
-            stats.AddRow("Temp", $"[red]{mining.CurrentTemperature:F1} °C[/]");
-            AnsiConsole.Write(stats);
+            stats.AddRow("Temp", $"{(mining.CurrentTemperature > 85 ? "[red]" : "[green]")}{mining.CurrentTemperature:F1} °C[/]");
+
+            var walletTable = new Table().Border(TableBorder.Rounded).Title("[b]WALLET[/]");
+            walletTable.AddColumn("Coin").AddColumn("Value");
+            foreach (var coin in cryptoWallet.Keys)
+                walletTable.AddRow(coin.ToString(), $"[green]{(cryptoWallet[coin] * market.Prices[coin]):N2} $[/]");
+
+            grid.AddRow(stats, walletTable);
+            AnsiConsole.Write(grid);
+
+            AnsiConsole.Write(new Panel(DrawMarketGraph()).Header("BTC PRICE TREND (Last 30 ticks)").BorderColor(Color.Blue));
 
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
-                    .Title("Action:")
-                    .AddChoices("Buy Hardware", "Manage Rigs", "Mine", "Sell All", "Exit"));
+                    .AddChoices("Buy Hardware", "Buy Cooling", "Manage Hardware", "Sell All", "Save Game", "Load Game", "Exit"));
 
             if (choice == "Exit") break;
 
@@ -44,45 +61,56 @@ public class Program
                     }
                     break;
 
-                case "Manage Rigs":
-                    var mineables = new List<MiningHardware>();
-                    foreach (var h in mining.CurrentLocation.Rigs)
-                    {
-                        if (h is MiningHardware m) mineables.Add(m);
-                        if (h is RigHardware r) mineables.AddRange(r.Cards);
-                    }
-
-                    if (mineables.Count == 0) break;
-
-                    var target = AnsiConsole.Prompt(new SelectionPrompt<MiningHardware>()
-                        .UseConverter(h => $"{h.Name} (Coin: {h.SelectedCoin})")
-                        .AddChoices(mineables));
-
-                    var coin = AnsiConsole.Prompt(new SelectionPrompt<CryptoCurrency>().AddChoices(Enum.GetValues<CryptoCurrency>()));
-                    target.SelectCoin(coin);
-                    break;
-
-                case "Mine":
-                    AnsiConsole.Status().Start("Mining...", ctx => {
-                        for (int i = 0; i < 5; i++) {
-                            foreach (var h in mining.CurrentLocation.Rigs) {
-                                if (h is MiningHardware m) cryptoWallet[m.SelectedCoin] += (m.Hashrate / mining.NetworkDifficulties[m.SelectedCoin]) / 5;
-                                if (h is RigHardware r) foreach(var c in r.Cards) cryptoWallet[c.SelectedCoin] += (c.Hashrate / mining.NetworkDifficulties[c.SelectedCoin]) / 5;
-                            }
-                            Thread.Sleep(200);
-                        }
-                    });
-                    break;
-
                 case "Sell All":
-                    double total = 0;
                     foreach (var c in cryptoWallet.Keys.ToList()) {
-                        total += cryptoWallet[c] * mining.Prices[c];
+                        mining.WalletBalance += cryptoWallet[c] * market.Prices[c];
                         cryptoWallet[c] = 0;
                     }
-                    mining.WalletBalance += total;
+                    break;
+
+                case "Save Game":
+                    var saveData = new SaveData { Balance = mining.WalletBalance, Wallet = cryptoWallet };
+                    File.WriteAllText("savegame.json", JsonSerializer.Serialize(saveData));
+                    AnsiConsole.MarkupLine("[green]Game Saved![/]");
+                    Thread.Sleep(1000);
+                    break;
+
+                case "Load Game":
+                    if (File.Exists("savegame.json")) {
+                        var loaded = JsonSerializer.Deserialize<SaveData>(File.ReadAllText("savegame.json"));
+                        mining.WalletBalance = loaded.Balance;
+                        cryptoWallet = loaded.Wallet;
+                        AnsiConsole.MarkupLine("[green]Game Loaded![/]");
+                    }
+                    Thread.Sleep(1000);
                     break;
             }
         }
     }
+
+    private static string DrawMarketGraph()
+    {
+        if (btcHistory.Count < 2) return "Gathering data...";
+        double max = btcHistory.Max();
+        double min = btcHistory.Min();
+        double range = max - min;
+        
+        string graph = "";
+        for (int y = 5; y >= 0; y--)
+        {
+            for (int x = 0; x < btcHistory.Count; x++)
+            {
+                double threshold = min + (range / 5.0 * y);
+                graph += btcHistory[x] >= threshold ? "[green]█[/]" : " ";
+            }
+            graph += "\n";
+        }
+        return graph;
+    }
+}
+
+public class SaveData
+{
+    public double Balance { get; set; }
+    public Dictionary<CryptoCurrency, double> Wallet { get; set; }
 }
