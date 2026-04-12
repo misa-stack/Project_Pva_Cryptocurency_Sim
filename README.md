@@ -1,6 +1,6 @@
 # Crypto Miner Tycoon — Kontrolní bod
 ## DISCLAIMER!!
-   Pro formátování readme a pro psaní kódu byla v určitých momentech použita AI a to z toho duvodu že se v tradingu ani celkově v kryptoměnách nevyznám a tudíž pro celkovou kvalitu projektu bylo výhodnější se AI v tento moment zeptat na pomoc než se vzdělávát o tom jak funguje trh což je velice komplexní. To avšak neznamená, že kódu nerozumím. AI mi pomohla s principem avšak to jak funguje herní smyčka či obchod na lokace jsem vztvářel já. 
+   Pro formátování readme a pro psaní kódu byla v určitých momentech použita AI, a to z toho duvodu že se v tradingu ani celkově v kryptoměnách nevyznám, a tudíž pro celkovou kvalitu projektu bylo výhodnější se AI v tento moment zeptat na pomoc, než se vzdělávát o tom jak funguje trh, což je velice komplexní. To avšak neznamená, že kódu nerozumím. AI mi pomohla s principem, avšak to jak funguje herní smyčka či obchod na lokace jsem vytvářel já. 
 ## O projektu
 
 Konzolový ekonomicko-technický simulátor těžby kryptoměn v C# (.NET 10) s terminálovým UI postaveným na knihovně **Spectre.Console**.
