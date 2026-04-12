@@ -279,7 +279,7 @@ int resale = (int)(hw.Price * 0.5 * (hw.Condition / 100.0));
 
 ```
 Projekt_pva/
-├── Program.cs          # Entry point, UI smyčka, menu handlers
+├── main.cs          # Entry point, UI smyčka, menu handlers
 ├── MiningEngine.cs     # Herní simulace na pozadí
 ├── MarketEngine.cs     # Tržní simulace na pozadí
 ├── Hardware.cs         # Hardware, MiningHardware, CoolingUnit, RigHardware
@@ -289,22 +289,3 @@ Projekt_pva/
 └── CryptoCurrency.cs   # Enum kryptoměn
 ```
 
-### Návrhové vzory
-
-- **Factory pattern** — `HardwareStore`, `LocationStore`
-- **Observer-like pattern** — `MiningEngine` konzumuje `MarketEngine.Prices` přes referenci
-- **Thread-safe producer/consumer** — `CoinsMinedBuffer` s `lock` pro oddělení těžebního vlákna od UI vlákna
-
----
-
-## Závislosti
-
-```xml
-<PackageReference Include="Spectre.Console" Version="0.49.*" />
-```
-
-## Spuštění
-
-```bash
-dotnet run --project Projekt_pva
-```
