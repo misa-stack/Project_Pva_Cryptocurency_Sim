@@ -6,16 +6,20 @@ public static class LocationStore
     {
         return locationName switch
         {
-            "Garage" => new Location("Garage", 10.5, 0.15, 5, 4000),
-            "BeachHouse" => new Location("Beach House", 25.0, 0.25, 12, 25000),
-            "WareHouse" => new Location("Warehouse", 200.0, 0.10, 100, 150000),
-            "SuperDuperUltimateLagreUnlimitedHouse" => new Location("Ultimate Mansion", 999.0, 0.05, 500, 1000000),
+            "Garage"     => new Location("Garage",           10.5,  0.15,   5,     4_000,   0.0),
+            "BeachHouse" => new Location("Beach House",      25.0,  0.25,  12,    25_000,   5.0),
+            "WareHouse"  => new Location("Warehouse",       200.0,  0.10, 100,   150_000,  30.0),
+            "SuperDuperUltimateLagreUnlimitedHouse"
+                         => new Location("Ultimate Mansion", 999.0, 0.05, 500, 1_000_000, 100.0),
             _ => throw new ArgumentException($"Location '{locationName}' not found!")
         };
     }
 
-    public static List<string> GetAvailableLocations() 
+    public static List<string> GetAvailableLocations() => new()
     {
-        return new List<string> { "Garage", "BeachHouse", "WareHouse", "SuperDuperUltimateLagreUnlimitedHouse" };
-    }
+        "Garage",
+        "BeachHouse",
+        "WareHouse",
+        "SuperDuperUltimateLagreUnlimitedHouse"
+    };
 }
