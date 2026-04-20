@@ -2,6 +2,7 @@ namespace Projekt_pva;
 
 public class MiningEngine
 {
+
     public double WalletBalance      { get; set; } = 10_000.0;
     public double CurrentTemperature { get; private set; } = 20.0;
     public Location CurrentLocation  { get; set; }
@@ -60,35 +61,45 @@ public class MiningEngine
     private void UpdateSimulation()
     {
         double totalConsumptionWh = 0;
+        foreach (var hardware in CurrentLocation.Rigs.ToList())
+        {
+            totalConsumptionWh += hardware.Consumption * (hardware is MiningHardware { IsOverclocked: true } ? 1.5 : 1.0);
+        }
+
+        double currentLoadKW = totalConsumptionWh / 1000.0;
+        bool powerTripped = currentLoadKW > CurrentLocation.PowerLimit;
+        
         double totalHeatGen       = 0;
         double totalCoolingPower  = CurrentLocation.CoolingCapacity;
 
         var tickCoins = Enum.GetValues<CryptoCurrency>().ToDictionary(c => c, _ => 0.0);
-
-        foreach (var hardware in CurrentLocation.Rigs.ToList())
+        if (!powerTripped)
         {
-            if (hardware is MiningHardware mhw)
+            foreach (var hardware in CurrentLocation.Rigs.ToList())
             {
-                ProcessHardware(mhw, tickCoins, ref totalConsumptionWh, ref totalHeatGen);
+                if (hardware is MiningHardware mhw)
+                {
+                    ProcessHardware(mhw, tickCoins, ref totalConsumptionWh, ref totalHeatGen);
+                }
+                else if (hardware is RigHardware rhw)
+                {
+                    totalConsumptionWh += rhw.Consumption;
+                    totalHeatGen += rhw.HeatOutput;
+                    foreach (var card in rhw.Cards)
+                        ProcessHardware(card, tickCoins, ref totalConsumptionWh, ref totalHeatGen);
+                }
+                else if (hardware is CoolingUnit cu)
+                {
+                    totalCoolingPower += cu.CoolingPower;
+                    totalConsumptionWh += cu.Consumption;
+                }
             }
-            else if (hardware is RigHardware rhw)
-            {
-                totalConsumptionWh += rhw.Consumption;
-                totalHeatGen       += rhw.HeatOutput;
-                foreach (var card in rhw.Cards)
-                    ProcessHardware(card, tickCoins, ref totalConsumptionWh, ref totalHeatGen);
-            }
-            else if (hardware is CoolingUnit cu)
-            {
-                totalCoolingPower  += cu.CoolingPower;
-                totalConsumptionWh += cu.Consumption;
-            }
-        }
 
-        lock (_bufferLock)
-        {
-            foreach (var coin in tickCoins.Keys)
-                CoinsMinedBuffer[coin] += tickCoins[coin];
+            lock (_bufferLock)
+            {
+                foreach (var coin in tickCoins.Keys)
+                    CoinsMinedBuffer[coin] += tickCoins[coin];
+            }
         }
 
         double thermalMass = CurrentLocation.Size * 1.5;

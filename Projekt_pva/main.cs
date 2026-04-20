@@ -10,16 +10,19 @@ public class Program
     private static readonly Dictionary<CryptoCurrency, List<double>> PriceHistory =
         Enum.GetValues<CryptoCurrency>().ToDictionary(c => c, _ => new List<double>());
 
+    private static readonly object _walletLock = new();
+
     private static readonly Dictionary<CryptoCurrency, Color> CoinColor = new()
     {
-        { CryptoCurrency.BTC,          Color.Yellow       },
-        { CryptoCurrency.ETH,          Color.Blue         },
-        { CryptoCurrency.SOL,          Color.Cyan1        },
-        { CryptoCurrency.DOGE,         Color.Green        },
-        { CryptoCurrency.HawkTuahCoin, Color.Red          },
+        { CryptoCurrency.BTC,          Color.Yellow },
+        { CryptoCurrency.ETH,          Color.Blue   },
+        { CryptoCurrency.SOL,          Color.Cyan1  },
+        { CryptoCurrency.DOGE,         Color.Green  },
+        { CryptoCurrency.HawkTuahCoin, Color.Red    },
     };
 
     private static string CC(CryptoCurrency c) => $"[{CoinColor[c].ToString().ToLower()}]";
+
 
     public static void Main(string[] args)
     {
@@ -30,70 +33,26 @@ public class Program
         market.Start();
         mining.Start();
 
+        _ = Task.Run(() =>
+        {
+            while (true)
+            {
+                lock (_walletLock)
+                    mining.FlushCoinsIntoWallet(cryptoWallet);
+                Thread.Sleep(1000);
+            }
+        });
+
         while (true)
         {
-            mining.FlushCoinsIntoWallet(cryptoWallet);
+            RenderDashboard(mining, market, cryptoWallet);
 
-            Console.Clear();
-            AnsiConsole.Write(new FigletText("CRYPTO TYCOON").Color(Color.Gold1));
-
-            foreach (var coin in Enum.GetValues<CryptoCurrency>())
+            while (!Console.KeyAvailable)
             {
-                PriceHistory[coin].Add(market.Prices[coin]);
-                if (PriceHistory[coin].Count > 60) PriceHistory[coin].RemoveAt(0);
+                Thread.Sleep(1000);
+                RenderDashboard(mining, market, cryptoWallet);
             }
-
-            var grid = new Grid().AddColumn().AddColumn().AddColumn();
-
-            var stats = new Table().Border(TableBorder.Rounded).Title("[b]SIMULATION[/]");
-            stats.AddColumn("Metric").AddColumn("Value");
-            stats.AddRow("Market",   $"[bold]{market.GetMarketTrend()}[/]");
-            stats.AddRow("Balance",  $"[yellow]{mining.WalletBalance:N2} $[/]");
-            stats.AddRow("Temp",     $"{(mining.CurrentTemperature > 85 ? "[red]" : "[green]")}{mining.CurrentTemperature:F1} °C[/]");
-            stats.AddRow("Location", $"[cyan]{mining.CurrentLocation.Name}[/]");
-            stats.AddRow("Rigs",     $"{mining.CurrentLocation.Rigs.Count} / {mining.CurrentLocation.Size}");
-
-            var walletTable = new Table().Border(TableBorder.Rounded).Title("[b]WALLET[/]");
-            walletTable.AddColumn("Coin").AddColumn("Amount").AddColumn("Value $");
-            foreach (var coin in cryptoWallet.Keys)
-                walletTable.AddRow(
-                    $"{CC(coin)}{coin}[/]",
-                    $"{cryptoWallet[coin]:F8}",
-                    $"[green]{cryptoWallet[coin] * market.Prices[coin]:N4}[/]"
-                );
-
-            var priceTable = new Table().Border(TableBorder.Rounded).Title("[b]PRICES[/]");
-            priceTable.AddColumn("Coin").AddColumn("Price $").AddColumn("24h");
-            foreach (var coin in market.Prices.Keys)
-            {
-                var hist  = PriceHistory[coin];
-                string tr = hist.Count >= 2
-                    ? (hist[^1] > hist[^2] ? "[green]▲[/]" : "[red]▼[/]")
-                    : "–";
-                priceTable.AddRow($"{CC(coin)}{coin}[/]", $"[yellow]{market.Prices[coin]:N6}[/]", tr);
-            }
-
-            grid.AddRow(stats, walletTable, priceTable);
-            AnsiConsole.Write(grid);
-
-            int termW    = Console.WindowWidth > 0 ? Console.WindowWidth : 120;
-            int graphPts = Math.Min(55, termW / 2 - 4);
-
-            var btcPanel = new Panel(SmoothGraph(CryptoCurrency.BTC, graphPts, 8));
-
-            var sparkTable = new Table().Border(TableBorder.Rounded).Title("[b]ALL COINS[/]").Expand();
-            sparkTable.AddColumn("Coin").AddColumn("Spark (20t)").AddColumn("Price $");
-            foreach (var coin in Enum.GetValues<CryptoCurrency>())
-                sparkTable.AddRow(
-                    $"{CC(coin)}{coin}[/]",
-                    Sparkline(coin, 20),
-                    $"[yellow]{market.Prices[coin]:N6}[/]"
-                );
-
-            AnsiConsole.Write(new Columns(btcPanel, new Panel(sparkTable)
-                .Header("MARKET OVERVIEW")
-                .BorderColor(Color.Grey)
-                .Expand()));
+            Console.ReadKey(true);
 
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
@@ -125,6 +84,69 @@ public class Program
             }
         }
     }
+
+
+    
+    private static void RenderDashboard(MiningEngine mining, MarketEngine market,
+                                         Dictionary<CryptoCurrency, double> cryptoWallet)
+    {
+        foreach (var coin in Enum.GetValues<CryptoCurrency>())
+        {
+            PriceHistory[coin].Add(market.Prices[coin]);
+            if (PriceHistory[coin].Count > 60) PriceHistory[coin].RemoveAt(0);
+        }
+
+        Console.Clear();
+        AnsiConsole.Write(new FigletText("CRYPTO TYCOON").Color(Color.Gold1));
+
+        var grid = new Grid();
+        grid.AddColumn(new GridColumn());
+        grid.AddColumn(new GridColumn());
+        grid.AddColumn(new GridColumn());
+
+        double currentLoadKW = mining.CurrentLocation.Rigs
+            .Sum(h => h.Consumption * (h is MiningHardware { IsOverclocked: true } ? 1.5 : 1.0)) / 1000.0;
+        bool isOverLimit = currentLoadKW > mining.CurrentLocation.PowerLimit;
+
+        var stats = new Table().Border(TableBorder.Rounded).Title("[b]SIMULATION[/]").Expand();
+        stats.AddColumn("Metric");
+        stats.AddColumn("Value");
+        stats.AddRow("Market",   $"[bold]{market.GetMarketTrend()}[/]");
+        stats.AddRow("Balance",  $"[yellow]{mining.WalletBalance:N2} $[/]");
+        stats.AddRow("Power",    $"{(isOverLimit ? "[red]" : "[green]")}{currentLoadKW:F1} / {mining.CurrentLocation.PowerLimit} kW[/]");
+        stats.AddRow("Temp",     $"{(mining.CurrentTemperature > 85 ? "[red]" : "[green]")}{mining.CurrentTemperature:F1} °C[/]");
+        stats.AddRow("Location", $"[cyan]{mining.CurrentLocation.Name}[/]");
+        stats.AddRow("Rigs",     $"{mining.CurrentLocation.Rigs.Count} / {mining.CurrentLocation.Size}");
+
+        var walletTable = new Table().Border(TableBorder.Rounded).Title("[b]WALLET[/]").Expand();
+        walletTable.AddColumn("Coin");
+        walletTable.AddColumn("Amount");
+        walletTable.AddColumn("Value $");
+        lock (_walletLock)
+        {
+            foreach (var (coin, amount) in cryptoWallet)
+            {
+                double val = amount * market.Prices[coin];
+                walletTable.AddRow($"{CC(coin)}{coin}[/]", $"{amount:F6}", $"[green]{val:N2}[/]");
+            }
+        }
+
+        var priceTable = new Table().Border(TableBorder.Rounded).Title("[b]PRICES[/]").Expand();
+        priceTable.AddColumn("Coin");
+        priceTable.AddColumn("Price $");
+        priceTable.AddColumn("History");
+        foreach (var coin in Enum.GetValues<CryptoCurrency>())
+            priceTable.AddRow($"{CC(coin)}{coin}[/]", $"[white]{market.Prices[coin]:N4}[/]", Sparkline(coin, 10));
+
+        grid.AddRow(stats, walletTable, priceTable);
+        AnsiConsole.Write(grid);
+
+        int termW    = Console.WindowWidth > 0 ? Console.WindowWidth : 120;
+
+
+        AnsiConsole.MarkupLine("[grey]⛏  Mining in progress... Press any key to open the menu.[/]");
+    }
+
 
     private static void ViewMarketCharts(MarketEngine market)
     {
@@ -186,6 +208,7 @@ public class Program
         string tr = hist.Count >= 2 ? (hist[^1] > hist[^2] ? "▲" : "▼") : "–";
         return $"{CC(coin)} {coin} {tr} {market.Prices[coin]:N6} $[/]";
     }
+
 
     private static void BuyHardwareMenu(MiningEngine mining)
     {
@@ -262,9 +285,9 @@ public class Program
 
         var labels = loc.Rigs.Select(h => h switch
         {
-            MiningHardware mh => $"[GPU] {h.Name} | {h.Condition:F1}% | {(mh.IsOverclocked ? "[red]OC[/]" : "stock")} | {mh.SelectedCoin}",
-            CoolingUnit    cu => $"[FAN] {h.Name} | {h.Condition:F1}% | {cu.CoolingPower} kW",
-            RigHardware    rh => $"[RIG] {h.Name} | {rh.Cards.Count} cards | {h.Condition:F1}%",
+            MiningHardware mh => $"[[GPU]] {h.Name} | {h.Condition:F1}% | {(mh.IsOverclocked ? "[red]OC[/]" : "stock")} | {mh.SelectedCoin}",
+            CoolingUnit    cu => $"[[FAN]] {h.Name} | {h.Condition:F1}% | {cu.CoolingPower} kW",
+            RigHardware    rh => $"[[RIG]] {h.Name} | {rh.Cards.Count} cards | {h.Condition:F1}%",
             _                 => h.Name
         }).ToList();
         labels.Add("← Back");
@@ -302,8 +325,8 @@ public class Program
                 Thread.Sleep(900);
                 break;
 
-            case "Change Mined Coin":  ChangeCoinMenu((MiningHardware)hw, mining); break;
-            case "View Cards":         ViewRigCards((RigHardware)hw);              break;
+            case "Change Mined Coin": ChangeCoinMenu((MiningHardware)hw, mining); break;
+            case "View Cards":        ViewRigCards((RigHardware)hw);              break;
 
             case var s when s.StartsWith("Sell"):
                 mining.CurrentLocation.Rigs.Remove(hw);
@@ -397,19 +420,34 @@ public class Program
         Thread.Sleep(1800);
     }
 
+
     private static void SellAllCrypto(MiningEngine mining, Dictionary<CryptoCurrency, double> wallet, MarketEngine market)
     {
-        double total = wallet.Keys.Sum(c => { double v = wallet[c] * market.Prices[c]; wallet[c] = 0; return v; });
+        double total;
+        lock (_walletLock)
+        {
+            total = wallet.Keys.Sum(c => { double v = wallet[c] * market.Prices[c]; wallet[c] = 0; return v; });
+        }
         mining.WalletBalance += total;
         AnsiConsole.MarkupLine($"[green]Sold all for {total:N4} $[/]");
         Thread.Sleep(1200);
     }
 
+
     private static void SaveGame(MiningEngine mining, Dictionary<CryptoCurrency, double> wallet)
     {
+        SaveData snapshot;
+        lock (_walletLock)
+        {
+            snapshot = new SaveData
+            {
+                Balance  = mining.WalletBalance,
+                Wallet   = new Dictionary<CryptoCurrency, double>(wallet),
+                Location = mining.CurrentLocation.Name
+            };
+        }
         File.WriteAllText("savegame.json", JsonSerializer.Serialize(
-            new SaveData { Balance = mining.WalletBalance, Wallet = wallet, Location = mining.CurrentLocation.Name },
-            new JsonSerializerOptions { WriteIndented = true }));
+            snapshot, new JsonSerializerOptions { WriteIndented = true }));
         AnsiConsole.MarkupLine("[green]Saved![/]");
         Thread.Sleep(1000);
     }
@@ -420,12 +458,14 @@ public class Program
         var loaded = JsonSerializer.Deserialize<SaveData>(File.ReadAllText("savegame.json"));
         if (loaded == null) return;
         mining.WalletBalance = loaded.Balance;
-        wallet               = loaded.Wallet;
+        lock (_walletLock)
+            wallet = loaded.Wallet;
         if (!string.IsNullOrEmpty(loaded.Location))
             try { mining.CurrentLocation = LocationStore.BuyLocation(loaded.Location); } catch { }
         AnsiConsole.MarkupLine("[green]Loaded![/]");
         Thread.Sleep(1000);
     }
+
 
     private static string SmoothGraph(CryptoCurrency coin, int maxPts, int rows)
     {
@@ -440,8 +480,8 @@ public class Program
         if (rng < 1e-12) return $"  Flat at {max:N6} $\n";
 
         const string BLOCKS = " ▁▂▃▄▅▆▇█";
-        string col  = CC(coin);
-        var    sb   = new StringBuilder();
+        string col = CC(coin);
+        var    sb  = new StringBuilder();
 
         for (int row = rows - 1; row >= 0; row--)
         {
@@ -475,7 +515,7 @@ public class Program
         double min   = slice.Min();
         double rng   = max - min;
         string col   = CC(coin);
-        const string B = "▁▂▃▄▅▆▇█";
+        const string B = " ▁▂▃▄▅▆▇█";
 
         if (rng < 1e-12) return $"{col}{'─'.ToString().PadRight(maxPts, '─')}[/]";
 
@@ -488,6 +528,7 @@ public class Program
         return sb.ToString();
     }
 }
+
 
 public class SaveData
 {

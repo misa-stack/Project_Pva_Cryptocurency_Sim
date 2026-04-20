@@ -1,10 +1,10 @@
 namespace Projekt_pva;
 
-public enum CryptoCurrency 
-{ 
-    BTC, 
+public enum CryptoCurrency
+{
+    BTC,
     ETH,
     HawkTuahCoin,
-    SOL, 
-    DOGE, 
+    SOL,
+    DOGE,
 }
