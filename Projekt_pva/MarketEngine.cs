@@ -14,6 +14,9 @@ public class MarketEngine
     private double _marketSentiment = 1.0;
     private double _marketVolatility = 1.0;
     private int _cycleTicksRemaining = 0;
+    public double MarketSentiment  { get => _marketSentiment;  set => _marketSentiment  = value; }
+    public double MarketVolatility { get => _marketVolatility; set => _marketVolatility = value; }
+    public int    CycleTicks       { get => _cycleTicksRemaining; set => _cycleTicksRemaining = value; }
 
     public bool IsRunning { get; private set; }
 

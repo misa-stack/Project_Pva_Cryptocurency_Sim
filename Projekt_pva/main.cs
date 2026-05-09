@@ -73,20 +73,19 @@ public class Program
 
             switch (choice)
             {
-                case "Buy Hardware":       BuyHardwareMenu(mining);                     break;
-                case "Buy Cooling":        BuyCoolingMenu(mining);                      break;
-                case "Manage Hardware":    ManageHardwareMenu(mining);                  break;
-                case "Buy Location":       BuyLocationMenu(mining);                     break;
-                case "View Market Charts": ViewMarketCharts(market);                    break;
-                case "Sell All Crypto":    SellAllCrypto(mining, cryptoWallet, market); break;
-                case "Save Game":          SaveGame(mining, cryptoWallet);              break;
-                case "Load Game":          LoadGame(mining, ref cryptoWallet);          break;
+                case "Buy Hardware":       BuyHardwareMenu(mining);                          break;
+                case "Buy Cooling":        BuyCoolingMenu(mining);                           break;
+                case "Manage Hardware":    ManageHardwareMenu(mining);                       break;
+                case "Buy Location":       BuyLocationMenu(mining);                          break;
+                case "View Market Charts": ViewMarketCharts(market);                         break;
+                case "Sell All Crypto":    SellAllCrypto(mining, cryptoWallet, market);      break;
+                case "Save Game":          SaveGame(mining, cryptoWallet, market);           break;
+                case "Load Game":          LoadGame(mining, ref cryptoWallet, market);       break;
             }
         }
     }
 
 
-    
     private static void RenderDashboard(MiningEngine mining, MarketEngine market,
                                          Dictionary<CryptoCurrency, double> cryptoWallet)
     {
@@ -140,9 +139,6 @@ public class Program
 
         grid.AddRow(stats, walletTable, priceTable);
         AnsiConsole.Write(grid);
-
-        int termW    = Console.WindowWidth > 0 ? Console.WindowWidth : 120;
-
 
         AnsiConsole.MarkupLine("[grey]⛏  Mining in progress... Press any key to open the menu.[/]");
     }
@@ -434,36 +430,155 @@ public class Program
     }
 
 
-    private static void SaveGame(MiningEngine mining, Dictionary<CryptoCurrency, double> wallet)
+    private static void SaveGame(MiningEngine mining, Dictionary<CryptoCurrency, double> wallet, MarketEngine market)
     {
         SaveData snapshot;
         lock (_walletLock)
         {
             snapshot = new SaveData
             {
-                Balance  = mining.WalletBalance,
-                Wallet   = new Dictionary<CryptoCurrency, double>(wallet),
-                Location = mining.CurrentLocation.Name
+                Balance          = mining.WalletBalance,
+                LocationKey      = mining.CurrentLocation.Name,
+                Wallet           = new Dictionary<CryptoCurrency, double>(wallet),
+                Difficulties     = new Dictionary<CryptoCurrency, double>(mining.NetworkDifficulties),
+                Prices           = new Dictionary<CryptoCurrency, double>(market.Prices),
+                MarketSentiment  = market.MarketSentiment,
+                MarketVolatility = market.MarketVolatility,
+                CycleTicks       = market.CycleTicks,
+                Rigs             = mining.CurrentLocation.Rigs.Select(SerializeHardware).ToList()
             };
         }
-        File.WriteAllText("savegame.json", JsonSerializer.Serialize(
-            snapshot, new JsonSerializerOptions { WriteIndented = true }));
-        AnsiConsole.MarkupLine("[green]Saved![/]");
+
+        File.WriteAllText("savegame.json",
+            JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true }));
+
+        AnsiConsole.MarkupLine("[green]✔ Game saved![/]");
         Thread.Sleep(1000);
     }
 
-    private static void LoadGame(MiningEngine mining, ref Dictionary<CryptoCurrency, double> wallet)
+    private static void LoadGame(MiningEngine mining, ref Dictionary<CryptoCurrency, double> wallet, MarketEngine market)
     {
-        if (!File.Exists("savegame.json")) { AnsiConsole.MarkupLine("[red]No save found.[/]"); Thread.Sleep(1000); return; }
-        var loaded = JsonSerializer.Deserialize<SaveData>(File.ReadAllText("savegame.json"));
+        if (!File.Exists("savegame.json"))
+        {
+            AnsiConsole.MarkupLine("[red]No save file found.[/]");
+            Thread.Sleep(1000);
+            return;
+        }
+
+        SaveData? loaded;
+        try
+        {
+            loaded = JsonSerializer.Deserialize<SaveData>(File.ReadAllText("savegame.json"));
+        }
+        catch
+        {
+            AnsiConsole.MarkupLine("[red]Save file is corrupted.[/]");
+            Thread.Sleep(1000);
+            return;
+        }
+
         if (loaded == null) return;
+
         mining.WalletBalance = loaded.Balance;
+
         lock (_walletLock)
             wallet = loaded.Wallet;
-        if (!string.IsNullOrEmpty(loaded.Location))
-            try { mining.CurrentLocation = LocationStore.BuyLocation(loaded.Location); } catch { }
-        AnsiConsole.MarkupLine("[green]Loaded![/]");
+
+        foreach (var kv in loaded.Difficulties)
+            mining.NetworkDifficulties[kv.Key] = kv.Value;
+
+        foreach (var kv in loaded.Prices)
+            market.Prices[kv.Key] = kv.Value;
+
+        market.MarketSentiment  = loaded.MarketSentiment;
+        market.MarketVolatility = loaded.MarketVolatility;
+        market.CycleTicks       = loaded.CycleTicks;
+
+        string locKey = loaded.LocationKey switch
+        {
+            "Garage"          => "Garage",
+            "Beach House"     => "BeachHouse",
+            "Warehouse"       => "WareHouse",
+            "Ultimate Mansion"=> "SuperDuperUltimateLagreUnlimitedHouse",
+            _                 => "Garage"
+        };
+
+        try   { mining.CurrentLocation = LocationStore.BuyLocation(locKey); }
+        catch { mining.CurrentLocation = LocationStore.BuyLocation("Garage"); }
+
+        foreach (var hw in loaded.Rigs)
+        {
+            var restored = DeserializeHardware(hw);
+            if (restored != null)
+                mining.CurrentLocation.AddRig(restored);
+        }
+
+        AnsiConsole.MarkupLine("[green]✔ Game loaded![/]");
         Thread.Sleep(1000);
+    }
+
+    private static HardwareSaveData SerializeHardware(Hardware hw)
+    {
+        return hw switch
+        {
+            MiningHardware m => new HardwareSaveData
+            {
+                Type          = "MiningHardware",
+                ModelName     = m.Name,
+                Condition     = m.Condition,
+                IsOverclocked = m.IsOverclocked,
+                SelectedCoin  = m.SelectedCoin.ToString()
+            },
+            CoolingUnit c => new HardwareSaveData
+            {
+                Type      = "CoolingUnit",
+                ModelName = c.Name,
+                Condition = c.Condition
+            },
+            RigHardware r => new HardwareSaveData
+            {
+                Type      = "RigHardware",
+                ModelName = r.Name,
+                Condition = r.Condition,
+                Cards     = r.Cards.Select(SerializeHardware).ToList()
+            },
+            _ => new HardwareSaveData()
+        };
+    }
+
+    private static Hardware? DeserializeHardware(HardwareSaveData data)
+    {
+        try
+        {
+            switch (data.Type)
+            {
+                case "MiningHardware":
+                {
+                    var hw = HardwareStore.CreateGpu(data.ModelName);
+                    hw.Condition     = data.Condition;
+                    hw.IsOverclocked = data.IsOverclocked;
+                    hw.SelectedCoin  = Enum.Parse<CryptoCurrency>(data.SelectedCoin);
+                    return hw;
+                }
+                case "CoolingUnit":
+                {
+                    var cu = HardwareStore.CreateCooling(data.ModelName);
+                    cu.Condition = data.Condition;
+                    return cu;
+                }
+                case "RigHardware":
+                {
+                    var rig = new RigHardware(data.ModelName, 0, 0, 2, 0);
+                    rig.Condition = data.Condition;
+                    foreach (var card in data.Cards)
+                        if (DeserializeHardware(card) is MiningHardware mhw)
+                            rig.AddCard(mhw);
+                    return rig;
+                }
+            }
+        }
+        catch { }
+        return null;
     }
 
 
@@ -530,9 +645,25 @@ public class Program
 }
 
 
+public class HardwareSaveData
+{
+    public string Type          { get; set; } = "";
+    public string ModelName     { get; set; } = "";
+    public double Condition     { get; set; }
+    public bool   IsOverclocked { get; set; }
+    public string SelectedCoin  { get; set; } = "BTC";
+    public List<HardwareSaveData> Cards { get; set; } = new();
+}
+
 public class SaveData
 {
-    public double Balance  { get; set; }
-    public string Location { get; set; } = "";
-    public Dictionary<CryptoCurrency, double> Wallet { get; set; } = new();
+    public double Balance                                  { get; set; }
+    public string LocationKey                              { get; set; } = "Garage";
+    public Dictionary<CryptoCurrency, double> Wallet      { get; set; } = new();
+    public Dictionary<CryptoCurrency, double> Difficulties{ get; set; } = new();
+    public Dictionary<CryptoCurrency, double> Prices      { get; set; } = new();
+    public double MarketSentiment                          { get; set; } = 1.0;
+    public double MarketVolatility                         { get; set; } = 1.0;
+    public int    CycleTicks                               { get; set; } = 0;
+    public List<HardwareSaveData> Rigs                    { get; set; } = new();
 }
