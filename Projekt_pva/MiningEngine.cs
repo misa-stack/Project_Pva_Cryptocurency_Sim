@@ -127,7 +127,7 @@ public class MiningEngine
         double coinAmount = (hw.Hashrate * ocMult * throttle * (hw.Condition / 100.0))
                             / (NetworkDifficulties[hw.SelectedCoin] * 3600.0);
 
-        tickCoins[hw.SelectedCoin] += coinAmount;
+        tickCoins[hw.SelectedCoin] += coinAmount * 10;
 
         consumption += hw.Consumption * (hw.IsOverclocked ? 1.5 : 1.0);
         heat        += hw.HeatOutput  * (hw.IsOverclocked ? 2.0 : 1.0) * throttle;

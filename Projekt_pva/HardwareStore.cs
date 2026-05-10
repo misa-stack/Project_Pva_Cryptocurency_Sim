@@ -9,7 +9,7 @@ public static class HardwareStore
             "RTX 4090"     => new MiningHardware("RTX 4090",     120.0,     450.0, 5.0,  2,  4_000),
             "RTX 3080"     => new MiningHardware("RTX 3080",      95.0,     320.0, 4.0,  2,  2_500),
             "GTX 1080 Ti"  => new MiningHardware("GTX 1080 Ti",   45.0,     250.0, 3.5,  2,  1_000),
-            "Antminer S19" => new MiningHardware("Antminer S19", 95_000.0, 3_250.0, 15.0, 5, 10_000),
+            "Antminer S19" => new MiningHardware("Antminer S19", 9_500.0, 3_250.0, 15.0, 5, 10_000),
             _ => throw new ArgumentException($"Hardware model '{modelName}' not found!")
         };
     }
