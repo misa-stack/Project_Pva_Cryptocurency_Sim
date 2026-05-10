@@ -256,25 +256,6 @@ int resale = (int)(hw.Price * 0.5 * (hw.Condition / 100.0));
 
 ---
 
-## Co zbývá
-
-### Prioritní
-
-- [ ] **Hlavní menu** — nová hra, load, high score, exit (momentálně se hra spustí rovnou)
-- [ ] **High score systém** — uložení nejlepšího čistého jmění s datem
-- [ ] **Repair systém** — oprava hardware za poplatek (obnovení Condition)
-- [ ] **Power limit enforcement** — lokace mají `PowerLimit`, překročení zatím není blokováno
-
-### Bonusová rozšíření
-
-- [ ] **Náhodné události** — výpadky proudu, tweety celebrit měnící cenu HawkTuahCoin, požár
-- [ ] **Bazar** — prodej opotřebovaného hardware simulovaným kupujícím
-- [ ] **Research systém** — Undervolting (−20 % spotřeba), Better Cooling, atd.
-- [ ] **Více lokací simultánně** — vlastnit více farem najednou
-- [ ] **Live refresh grafů** — bez nutnosti vstoupit do menu
-
----
-
 ## Architektura
 
 ```
