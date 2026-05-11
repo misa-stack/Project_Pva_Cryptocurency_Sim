@@ -109,7 +109,7 @@ public class MiningEngine
             20, 120
         );
 
-        WalletBalance -= (totalConsumptionWh / 1000.0) * (CurrentLocation.ElectricityPrice / 3600.0);
+        WalletBalance -= (totalConsumptionWh / 10.0) * (CurrentLocation.ElectricityPrice / 3600.0);
 
         foreach (var coin in NetworkDifficulties.Keys.ToList())
             NetworkDifficulties[coin] *= (1 + Prices[coin] * 0.0000001);
